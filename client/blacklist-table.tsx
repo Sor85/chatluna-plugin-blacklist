@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { UserRoundXIcon } from 'lucide-react'
+import { BanIcon, TimerIcon } from 'lucide-react'
 import { apiErrorMessage, callAction, toast, useLive } from '@chatluna/ui-client/client'
 import {
   AlertDialog,
@@ -14,12 +14,6 @@ import {
   AvatarImage,
   Badge,
   Button,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
   Spinner,
 } from '@chatluna/ui-kit'
 import type { SchemaRendererProps } from '@chatluna/ui-schema-form/client'
@@ -66,7 +60,7 @@ function avatarOf(entry: BlacklistEntry) {
 
 /**
  * 设置页里的黑名单列表。它挂在不存值的 `list` 字段上：不调用 onChange，也不用 SchemaForm 的 Field 外壳，
- * 避免出现恢复默认、JSON 编辑等只对配置值有意义的菜单。用逐项卡片而非表格：理由长短不一，固定列宽会把它挤成窄条。
+ * 避免出现恢复默认、JSON 编辑等只对配置值有意义的菜单。用分隔线列表而非表格：理由长短不一，固定列宽会把它挤成窄条；每人两行，理由超过两行时截断，悬停显示全文。
  */
 export function BlacklistTable(props: SchemaRendererProps) {
   const list = useLive('blacklist.list')
@@ -92,49 +86,45 @@ export function BlacklistTable(props: SchemaRendererProps) {
       {entries.length === 0
         ? <div className="flex h-16 items-center justify-center rounded-lg border border-dashed text-muted-foreground">{placeholder}</div>
         : (
-          <ItemGroup aria-label={label} className="gap-2">
+          <ul aria-label={label} className="divide-y overflow-hidden rounded-lg border">
             {entries.map((entry) => {
               const name = entry.name || entry.userId
+              const temporary = entry.expiresAt !== 0
               return (
-                <Item key={entry.id} role="listitem" variant="outline" className="flex-nowrap items-start gap-3">
-                  <ItemMedia>
-                    <Avatar size="lg">
-                      <AvatarImage src={avatarOf(entry)} alt="" referrerPolicy="no-referrer" />
-                      <AvatarFallback>{Array.from(name)[0]}</AvatarFallback>
-                    </Avatar>
-                  </ItemMedia>
-                  <ItemContent className="min-w-0 gap-1">
-                    <ItemTitle className="w-full min-w-0 flex-wrap gap-x-2 gap-y-0.5">
-                      <span className="truncate">{name}</span>
-                      <span className="text-xs font-normal leading-4 text-muted-foreground">
+                <li key={entry.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <Avatar className="self-start">
+                    <AvatarImage src={avatarOf(entry)} alt="" referrerPolicy="no-referrer" />
+                    <AvatarFallback>{Array.from(name)[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <span className="truncate font-medium">{name}</span>
+                      <span className="shrink-0 text-xs leading-4 text-muted-foreground tabular-nums">
                         {entry.name ? `${entry.userId} · ` : ''}{entry.platform}
                       </span>
-                    </ItemTitle>
-                    <p className="whitespace-pre-wrap text-foreground/80 [overflow-wrap:anywhere]">{entry.reason}</p>
-                    <p className="text-xs leading-4 text-muted-foreground tabular-nums">
-                      {timeOf(entry.createdAt)} 拉黑{entry.expiresAt === 0 ? '' : `，${timeOf(entry.expiresAt)} 到期`}
-                    </p>
-                  </ItemContent>
-                  <ItemActions className="shrink-0 gap-1">
-                    {entry.expiresAt === 0
-                      ? <Badge variant="destructive">永久</Badge>
-                      : <Badge variant="outline" className="tabular-nums">剩 {remainingOf(entry.expiresAt - now)}</Badge>}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={`解除拉黑：${displayOf(entry)}`}
-                      title="解除拉黑"
-                      onClick={() => setRemoving(entry)}
-                    >
-                      <UserRoundXIcon />
-                    </Button>
-                  </ItemActions>
-                </Item>
+                    </div>
+                    <p className="line-clamp-2 text-muted-foreground [overflow-wrap:anywhere]" title={entry.reason}>{entry.reason}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {temporary
+                      ? <Badge variant="secondary" className="tabular-nums" title={`${timeOf(entry.expiresAt)} 到期`}><TimerIcon />剩 {remainingOf(entry.expiresAt - now)}</Badge>
+                      : <Badge variant="destructive"><BanIcon />永久</Badge>}
+                    <span className="text-xs leading-4 text-muted-foreground tabular-nums">{timeOf(entry.createdAt)} 拉黑</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    aria-label={`解除拉黑：${displayOf(entry)}`}
+                    onClick={() => setRemoving(entry)}
+                  >
+                    解除
+                  </Button>
+                </li>
               )
             })}
-          </ItemGroup>
+          </ul>
         )}
       <RemoveDialog entry={removing} onClose={() => setRemoving(undefined)} />
     </div>
