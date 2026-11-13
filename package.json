@@ -4,6 +4,14 @@
   "description": "为 ChatLuna 提供拉黑与解除拉黑工具：拉黑须填写理由，已拉黑用户无法对话或使用指令，可查看黑名单列表",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sor85/chatluna-plugin-blacklist.git"
+  },
+  "homepage": "https://github.com/Sor85/chatluna-plugin-blacklist#readme",
+  "bugs": {
+    "url": "https://github.com/Sor85/chatluna-plugin-blacklist/issues"
+  },
   "keywords": [
     "chatluna-plugin",
     "blacklist",

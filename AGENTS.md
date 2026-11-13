@@ -10,6 +10,7 @@ ChatLuna v2 / Cordis 4 的独立扩展插件，让机器人自己拉黑辱骂、
 - 当前目录是唯一源码来源，不安装依赖、不生成锁文件或构建产物。`node scripts/dev.mjs` 单向同步到 v2 的 `external/blacklist`，在该 workspace 中执行 Yarn、TypeScript 和 Vitest。
 - 首次执行 `node scripts/dev.mjs install`；修改后执行 `node scripts/dev.mjs check`（同步、构建、类型检查、测试），也可单独执行 `sync`、`build`、`typecheck`、`test`。
 - 开发副本默认位于 `../../chatluna-v2-mirror`，可用 `--mirror <路径>` 或 `CHATLUNA_V2_ROOT` 覆盖；需要 Node.js ≥24 和 Yarn 4。
+- 发布用 `node scripts/publish.mjs`（`--dry-run` 演练，`--otp=<验证码>` 应对两步验证），不经 yarn 启动。v2 仍为私有仓库，发布在本机完成：要求工作区干净、已推送、tag 未占用、npm 已登录；同步后清空副本的 `lib`、`dist`、`tsconfig.tsbuildinfo`，用 `dev.mjs check` 重新构建并测试，`yarn pack` 改写 `workspace:*` 后解压再 `npm publish`（直接发布 tgz 时 npm 元数据缺 readme，市场显示「暂无说明」），最后打 `v<版本>` tag 并推送。
 - README 面向插件使用者，不写本地开发步骤；开发命令与约定放在本文件。
 - 不提交、发布、创建分支或更改宿主运行配置，除非用户明确授权。
 
