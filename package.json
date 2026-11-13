@@ -1,0 +1,89 @@
+{
+  "name": "chatluna-plugin-blacklist",
+  "version": "0.0.1",
+  "description": "为 ChatLuna 提供拉黑与解除拉黑工具：拉黑须填写理由，已拉黑用户无法对话或使用指令，可查看黑名单列表",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "chatluna-plugin",
+    "blacklist",
+    "tools"
+  ],
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./client": {
+      "types": "./client/index.ts",
+      "default": "./client/index.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "dist",
+    "client",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "cd ../.. && yarn exec tsc --build external/blacklist/tsconfig.json && yarn yakumo rolldown blacklist && yarn workspace chatluna-plugin-blacklist exec node scripts/build-client.mjs",
+    "typecheck": "cd ../.. && yarn exec tsc -p external/blacklist/tsconfig.check.json && yarn exec tsc -p external/blacklist/tsconfig.client.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cosmokit": "^1.8.1"
+  },
+  "peerDependencies": {
+    "@chatluna/schema": ">=2.0.0-alpha.0",
+    "@cordisjs/plugin-database": "4.2.0",
+    "cordis": "^4.0.0-rc.12"
+  },
+  "devDependencies": {
+    "@chatluna/chat": "workspace:*",
+    "@chatluna/permission": "workspace:*",
+    "@chatluna/schema": "workspace:*",
+    "@chatluna/tool": "workspace:*",
+    "@chatluna/ui-client": "workspace:*",
+    "@chatluna/ui-kit": "workspace:*",
+    "@chatluna/ui-schema-form": "workspace:*",
+    "@chatluna/ui-server": "workspace:*",
+    "@cordisjs/plugin-database": "4.2.0",
+    "@cordisjs/plugin-database-sqlite": "5.2.0",
+    "@satorijs/core": "~4.6.1",
+    "@types/node": "24.13.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "cordis": "4.0.0-rc.12",
+    "koishi": "npm:@koishijs/core@4.18.11",
+    "koishi-plugin-adapter-onebot": "6.9.5",
+    "lucide-react": "^1.31.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vitest": "^3.2.4"
+  },
+  "cordis": {
+    "description": {
+      "zh": "拉黑与解除拉黑工具，已拉黑用户无法对话或使用指令",
+      "en": "Blacklist tools: blacklisted users can no longer chat or run commands"
+    },
+    "service": {
+      "required": [
+        "model",
+        "database",
+        "tools",
+        "permissions"
+      ],
+      "optional": [
+        "koishi",
+        "chatluna_webui"
+      ]
+    }
+  }
+}
