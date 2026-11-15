@@ -51,10 +51,14 @@
   "peerDependencies": {
     "@chatluna/schema": ">=2.0.0-alpha.0",
     "@cordisjs/plugin-database": "4.2.0",
+    "@satorijs/core": "~4.6.1",
     "cordis": "^4.0.0-rc.12"
   },
   "devDependencies": {
     "@chatluna/chat": "workspace:*",
+    "@chatluna/chat-observer": "workspace:*",
+    "@chatluna/engine-setup-webui": "workspace:*",
+    "@chatluna/message": "workspace:*",
     "@chatluna/permission": "workspace:*",
     "@chatluna/schema": "workspace:*",
     "@chatluna/tool": "workspace:*",
@@ -90,7 +94,9 @@
       ],
       "optional": [
         "koishi",
-        "chatluna_webui"
+        "chatluna_webui",
+        "chat_observer",
+        "chatluna_setup"
       ]
     }
   }

@@ -4,7 +4,9 @@ import { Time } from 'cosmokit'
 import type { ToolCallContext } from '@chatluna/tool'
 import type {} from '@chatluna/permission'
 import type {} from '@satorijs/core'
+import { type Approval, evidenceFrom } from './approval'
 import { addedText, type Blacklist, displayOf, formatList, keyOf, profileOf } from './blacklist'
+import type { Config } from './config'
 
 const platformArg = () => Schema.string().required(false)
   .description('Platform of the user. Defaults to the platform of the current conversation.')
@@ -20,8 +22,9 @@ function platformOf(call: ToolCallContext, platform: string | undefined) {
  * 所以描述里写明谨慎使用的条件（亲眼所见、反复或恶意、先警告、初犯限时），把把关交给描述而不是权限：
  * 两个权限项默认等级 1，也不保护高等级用户；只拒绝拉黑 bot 自己。需要收紧时在权限页调整。
  * 查看列表是只读工具，沿用工具服务的默认权限 `tool:list_blacklisted_users`。
+ * 开启请示主人时，拉黑工具只提交请示并立即返回，不等主人答复：工具调用有超时，主人可能很久才回复。
  */
-export function registerTools(ctx: Context, blacklist: Blacklist) {
+export function registerTools(ctx: Context, blacklist: Blacklist, config: Config, approval?: Approval) {
   ctx.permissions.define('blacklist:add', { description: '让机器人拉黑用户，被拉黑的用户无法再与机器人对话', allow: 1 })
   ctx.permissions.define('blacklist:remove', { description: '让机器人解除用户的拉黑', allow: 1 })
 
@@ -39,13 +42,16 @@ export function registerTools(ctx: Context, blacklist: Blacklist) {
       + 'or users who return to the same behavior after a temporary blacklist. Omitting durationMinutes means permanent.',
       'userId defaults to the user you are talking to; when targeting someone else, use only an ID that appears in this conversation. '
       + 'The reason must describe the concrete behavior.',
+      ...approval ? ['The request goes to the bot owner with the user\'s recent messages; the user is blacklisted only after the owner agrees. '
+        + 'Do not claim the user is blacklisted until then.'] : [],
     ].join('\n'),
     locales: {
       zh: {
         description: '拉黑用户，此后不再接收其任何消息和指令。仅作为最后手段：须亲眼看到对方持续辱骂、骚扰、威胁机器人，刷屏，或被劝阻后仍恶意滥用，'
           + '且行为反复或明显恶意、已先警告（情节严重时除外）。单次失礼、玩笑调侃、角色扮演、批评或不同意见、对回答不满、无心之失，'
           + '以及他人要求拉黑而机器人未见其行为时，均不拉黑。初犯优先限时拉黑（如 30 至 1440 分钟），严重或限时后再犯才永久拉黑；'
-          + '默认拉黑当前对话的用户，理由须写明具体行为。',
+          + '默认拉黑当前对话的用户，理由须写明具体行为。'
+          + (approval ? '拉黑请求连同该用户最近的消息提交给主人，主人同意后才拉黑，此前不得声称已拉黑。' : ''),
         args: {
           userId: '要拉黑的用户 ID，默认当前对话的用户；拉黑他人时只使用会话中出现过的 ID',
           reason: '拉黑理由，写明具体行为',
@@ -76,7 +82,7 @@ export function registerTools(ctx: Context, blacklist: Blacklist) {
       if (here && userId === location.selfId) throw new Error('不能拉黑机器人自己。')
       const bot = here ? ctx.get('satori')?.bots.find((bot) => bot.platform === platform && bot.selfId === location.selfId) : undefined
       const profile = await profileOf(bot, userId, here && !location.isDirect ? location.guild : undefined)
-      return addedText(await blacklist.add({
+      const input = {
         platform,
         userId,
         name: args.userName || profile.name,
@@ -84,7 +90,14 @@ export function registerTools(ctx: Context, blacklist: Blacklist) {
         reason: args.reason,
         operator: actor?.user === undefined ? undefined : keyOf(actor.platform ?? platform, actor.user),
         duration: (args.durationMinutes ?? 0) * Time.minute,
-      }))
+      }
+      if (!approval) return addedText(await blacklist.add(input))
+      return approval.request({
+        ...input,
+        selfId: here ? location.selfId : undefined,
+        place: !here ? '会话未知' : location.isDirect ? '私聊' : `群 ${location.guild ?? location.channel}`,
+        evidence: here ? evidenceFrom(ctx, location.session, userId, config.evidenceCount) : [],
+      })
     },
   })
 

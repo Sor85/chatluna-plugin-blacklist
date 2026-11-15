@@ -11,7 +11,7 @@ import { apply, Config, inject, name } from '../src'
 
 const plugin = { apply, Config, inject, name }
 const roots: Context[] = []
-const location = { platform: 'onebot', selfId: '10001', isDirect: false, guild: '30003', channel: '30003' }
+const location = { platform: 'onebot', selfId: '10001', isDirect: false, guild: '30003', channel: '30003', session: 'onebot:30003' }
 const actor = { ...location, user: '20002' }
 
 async function host(config: Partial<Config> = {}) {
@@ -29,23 +29,29 @@ async function host(config: Partial<Config> = {}) {
     sent.push(h.normalize(content).join(''))
     return [String(sent.length)]
   })
-  const fork = await ctx.plugin(plugin, Config(config))
+  const privates: { userId: string, content: string }[] = []
+  vi.spyOn(bot, 'sendPrivateMessage').mockImplementation(async (userId, content) => {
+    privates.push({ userId, content: h.normalize(content).join('') })
+    return [`p${privates.length}`]
+  })
+  // 已有用例测试直接拉黑，请示主人的用例显式开启。
+  const fork = await ctx.plugin(plugin, Config({ approval: false, ...config }))
   await new Promise((resolve) => setTimeout(resolve, 0))
 
   const call = async (tool: string, args: Record<string, unknown>) => {
     const record = await ctx.tools.execute({ name: tool, args: JSON.parse(JSON.stringify(args)), location, actor })
     return record.ok ? record.value : record.error?.message
   }
-  /** 经真实 OneBot 适配器解析的群消息会话。 */
-  async function message(userId: string, text: string) {
+  /** 经真实 OneBot 适配器解析的群消息会话，`direct` 为私聊。 */
+  async function message(userId: string, text: string, direct = false) {
     const data = {
       time: 1700000000,
       self_id: 10001,
       post_type: 'message',
-      message_type: 'group',
-      sub_type: 'normal',
+      message_type: direct ? 'private' : 'group',
+      sub_type: direct ? 'friend' : 'normal',
       message_id: 1,
-      group_id: 30003,
+      ...direct ? {} : { group_id: 30003 },
       user_id: Number(userId),
       message: text,
       raw_message: text,
@@ -64,7 +70,7 @@ async function host(config: Partial<Config> = {}) {
       { kind: 'scope', field: 'user', values: [user] },
     ] },
   })
-  return { ctx, bot, fork, sent, call, message, promote }
+  return { ctx, bot, fork, sent, privates, call, message, promote }
 }
 
 afterEach(async () => {
@@ -126,7 +132,7 @@ describe('工具', () => {
     const rows = await app.ctx.database.get('chatluna_blacklist', {})
     expect(rows).toMatchObject([{ id: 'onebot:40004', reason: '辱骂', operator: 'onebot:20002', name: '' }])
     await app.fork.dispose()
-    await app.ctx.plugin(plugin, Config({}))
+    await app.ctx.plugin(plugin, Config({ approval: false }))
     expect(await app.call('list_blacklisted_users', {})).toContain('1. 40004，平台：onebot，理由：辱骂')
   })
 })
@@ -164,7 +170,7 @@ describe('拉黑时长', () => {
 
     vi.setSystemTime(new Date('2026-11-13T13:00:00+08:00'))
     await app.fork.dispose()
-    await app.ctx.plugin(plugin, Config({}))
+    await app.ctx.plugin(plugin, Config({ approval: false }))
     expect(await app.call('list_blacklisted_users', {})).toContain('共 1 名已拉黑用户')
     expect(await app.ctx.database.get('chatluna_blacklist', {})).toMatchObject([{ id: 'onebot:40004', expiresAt: 0 }])
   })
@@ -219,5 +225,114 @@ describe('管理指令', () => {
     const app = await host()
     await (await app.message('20002', 'blacklist')).execute('blacklist')
     expect(app.sent.join('')).not.toContain('黑名单为空')
+  })
+})
+
+describe('请示主人', () => {
+  const owner = '90009'
+  const observed = (userId: string, text: string, time: number) => ({ userId, name: `user${userId}`, time, self: false, content: [{ type: 'text', text }] })
+
+  async function approval() {
+    const app = await host({ approval: true })
+    app.bot.user = { id: '10001', name: '宁宁' }
+    app.ctx.provide('chatluna_setup', {
+      snapshot: () => ({ owners: [{ platform: 'onebot', user: owner }, { platform: 'web', user: 'admin' }] }),
+      isOwner: (platform: string, user: string) => platform === 'onebot' && user === owner,
+    })
+    const recent = vi.fn(() => [
+      { ...observed('20002', '傻瓜机器人', 1), content: [{ type: 'text', text: '@self 傻瓜机器人 @selfish' }] },
+      observed('40004', '路过', 2),
+      { ...observed('10001', '请文明发言', 3), self: true },
+      observed('20002', '就骂你', 4),
+    ])
+    app.ctx.provide('chat_observer', { recent })
+    /** 主人私聊一条消息，返回 before-receive 的结果和机器人的回执。 */
+    const reply = async (text: string, quote?: string, userId = owner) => {
+      const session = await app.message(userId, text, true)
+      if (quote) session.quote = { id: quote }
+      const before = app.sent.length
+      const result = await app.ctx.serial('chat/before-receive', session)
+      return { result, receipt: app.sent.slice(before).join('') }
+    }
+    return { ...app, recent, reply }
+  }
+
+  it('合并转发罪证给主人，主人同意后才拉黑', async () => {
+    const app = await approval()
+    const result = await app.call('blacklist_user', { reason: '持续辱骂', durationMinutes: 30 })
+    expect(result).toBe('已就拉黑 20002 请示主人（#1），主人同意前不会拉黑。')
+    expect(app.recent).toHaveBeenCalledWith('onebot:30003')
+    expect(app.privates.map((item) => item.userId)).toEqual([owner, owner])
+    const [forward, request] = app.privates.map((item) => item.content)
+    expect(forward).toMatch(/^<message forward>/)
+    expect(forward).toContain('<author id="20002" name="user20002"/>@宁宁 傻瓜机器人 @selfish')
+    expect(forward).toContain('就骂你')
+    expect(forward).not.toContain('路过')
+    expect(forward).not.toContain('请文明发言')
+    expect(request).toContain('拉黑请示 #1')
+    expect(request).toContain('群 30003')
+    expect(request).toContain('时长：30 分钟')
+    expect(request).toContain('理由：持续辱骂')
+    expect(request).toContain('上方合并转发的 2 条消息')
+    expect(await app.call('list_blacklisted_users', {})).toBe('黑名单为空。')
+
+    expect(await app.call('blacklist_user', { reason: '再次辱骂' })).toBe('已就拉黑 20002 请示过主人（#1），尚未答复，主人同意前不会拉黑。')
+    expect(app.privates).toHaveLength(2)
+
+    const { result: handled, receipt } = await app.reply('同意')
+    expect(handled).toBe(true)
+    expect(receipt).toMatch(/^拉黑请示 #1：已拉黑 20002，期限：至 .+，理由：持续辱骂$/)
+    expect(await app.ctx.database.get('chatluna_blacklist', {})).toMatchObject([{ id: 'onebot:20002', operator: `onebot:${owner}` }])
+    expect(await app.ctx.database.get('chatluna_blacklist_request', {})).toEqual([])
+    expect((await app.reply('同意 1')).receipt).toBe('拉黑请示 #1 不存在、已处理或已过期。')
+  })
+
+  it('拒绝时不拉黑；多条请示须注明编号或引用请示消息', async () => {
+    const app = await approval()
+    await app.call('blacklist_user', { reason: '刷屏' })
+    await app.call('blacklist_user', { userId: '40004', reason: '骚扰' })
+    expect((await app.reply('拒绝')).receipt).toBe('共有 2 条待处理的拉黑请示，答复时须注明编号，如「拒绝 1」。')
+    expect((await app.reply('拒绝 2')).receipt).toBe('已驳回拉黑请示 #2，未拉黑 40004。')
+    await app.call('blacklist_user', { userId: '40004', reason: '骚扰' })
+    expect((await app.reply('同意', 'p6')).receipt).toContain('拉黑请示 #3：已拉黑 40004')
+    expect(await app.call('list_blacklisted_users', {})).toContain('共 1 名已拉黑用户')
+    expect((await app.reply('拒绝')).receipt).toBe('已驳回拉黑请示 #1，未拉黑 20002。')
+  })
+
+  it('非主人、群聊和普通私聊照常进入对话', async () => {
+    const app = await approval()
+    await app.call('blacklist_user', { reason: '刷屏' })
+    expect((await app.reply('同意', undefined, '20002')).result).toBeUndefined()
+    const group = await app.message(owner, '同意')
+    expect(await app.ctx.serial('chat/before-receive', group)).toBeUndefined()
+    expect((await app.reply('你好')).result).toBeUndefined()
+    expect(await app.call('list_blacklisted_users', {})).toBe('黑名单为空。')
+  })
+
+  it('没有可私聊的主人或私聊失败时不拉黑', async () => {
+    const app = await approval()
+    app.ctx.set('chatluna_setup', { snapshot: () => ({ owners: [{ platform: 'web', user: 'admin' }] }), isOwner: () => false })
+    expect(await app.call('blacklist_user', { reason: '刷屏' })).toContain('没有可私聊的主人')
+    app.ctx.set('chatluna_setup', { snapshot: () => ({ owners: [{ platform: 'onebot', user: owner }] }), isOwner: () => true })
+    vi.mocked(app.bot.sendPrivateMessage).mockRejectedValue(new Error('offline'))
+    expect(await app.call('blacklist_user', { reason: '刷屏' })).toContain('私聊主人失败')
+    expect(await app.ctx.database.get('chatluna_blacklist_request', {})).toEqual([])
+    expect(await app.call('list_blacklisted_users', {})).toBe('黑名单为空。')
+  })
+
+  it('请示在重载后保留，24 小时后作废', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-13T12:00:00+08:00'))
+    const app = await approval()
+    await app.call('blacklist_user', { reason: '刷屏' })
+    await app.fork.dispose()
+    await app.ctx.plugin(plugin, Config({}))
+    expect((await app.reply('拒绝')).receipt).toBe('已驳回拉黑请示 #1，未拉黑 20002。')
+
+    await app.call('blacklist_user', { reason: '刷屏' })
+    vi.setSystemTime(new Date('2026-11-14T12:00:01+08:00'))
+    expect((await app.reply('同意')).result).toBeUndefined()
+    expect(await app.call('blacklist_user', { reason: '刷屏' })).toBe('已就拉黑 20002 请示主人（#3），主人同意前不会拉黑。')
+    vi.useRealTimers()
   })
 })

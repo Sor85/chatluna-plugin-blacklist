@@ -144,7 +144,7 @@ export async function profileOf(bot: Bot | undefined, userId: string, guildId?: 
 }
 
 /** 名称未知时只显示 ID。 */
-export const displayOf = (entry: BlacklistEntry) => entry.name ? `${entry.name}（${entry.userId}）` : entry.userId
+export const displayOf = (entry: Pick<BlacklistEntry, 'name' | 'userId'>) => entry.name ? `${entry.name}（${entry.userId}）` : entry.userId
 
 const timeOf = (timestamp: number) => new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
 

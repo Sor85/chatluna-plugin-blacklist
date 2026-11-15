@@ -22,6 +22,8 @@ ChatLuna v2 / Cordis 4 的独立扩展插件，让机器人自己拉黑辱骂、
 - 拉黑校验集中在 `Blacklist.add`：理由去空白后必填、重复拉黑不覆盖原理由。不按权限等级保护任何用户（用户明确要求，工具定位是 bot 自卫而非管理员工具）；只由调用方按会话的 `selfId` 拒绝拉黑机器人自己。
 - 工具调用身份是当前说话者，即通常的被拉黑者，所以 `blacklist:add` / `blacklist:remove` 默认等级 1；`blacklist_user` 的 `userId` 缺省为当前说话者。
 - koishi 为可选服务，未加载时只屏蔽对话，不注册管理指令。
+- 请示主人（`approval`，默认开启，`src/approval.ts`）：工具只写请示表 `chatluna_blacklist_request`（自增编号）并私聊主人，立即返回，不等答复，因为工具调用有超时而主人可能很久才回复。主人取 `chatluna_setup` 的 owners（排除 `web`），罪证取 `chat_observer.recent(location.session)` 中目标用户的消息，两者都用 `ctx.get` 可选取用。罪证用 `bot.sendPrivateMessage` 直接发送，不走 `ctx.chat.send`：后者的 censor 会清掉辱骂内容。OneBot 合并转发的每个节点都写 `<author>`，否则沿用上一节点的作者。
+- 主人的答复在 `chat/before-receive` 里识别：仅私聊、`isOwner`、整条消息为「同意/拒绝 [编号]」时回执并返回 `true`，否则放行进入对话。无编号时先按引用的请示消息 ID 对应，再在仅有一条待处理时默认指它。请示 24 小时作废，按 `createdAt` 惰性判断、加载时删除，不设定时器。
 
 - 设置页黑名单挂在 Config 的 `list` 字段（`Schema.any().role('blacklist:list')`）上，该字段不存值：`client/blacklist-table.tsx` 不调用 `onChange`，也不用 SchemaForm 的 `Field`/`extensionProps` 外壳，避免出现恢复默认与 JSON 编辑菜单。v2 没有按插件区分的设置页插槽（`plugin.tab` 会出现在所有插件上），所以用字段扩展。
 - 数据走 `chatluna_webui.state('blacklist.list')`，`refreshOn: ['blacklist/change']`；`Blacklist` 在加载完成与每次增删后触发该事件。解除拉黑走 `action('blacklist.remove')`，不经过插件配置（`src/webui.ts`）。到期不推送，前端每 30 秒按本地时间过滤到期行。
@@ -29,5 +31,5 @@ ChatLuna v2 / Cordis 4 的独立扩展插件，让机器人自己拉黑辱骂、
 
 ## 测试
 
-- 单元测试使用内存 SQLite、真实权限/工具服务和真实 OneBot 适配器解析，不发送真实消息。
+- 单元测试使用内存 SQLite、真实权限/工具服务和真实 OneBot 适配器解析，不发送真实消息。`chatluna_setup` 与 `chat_observer` 用 `ctx.provide` 注入假实现；直接拉黑的旧用例在 `host()` 中默认关闭 `approval`。
 - 端到端验证使用 onebot-sandbox 的 HTTP 测试接口，只在本任务新建的测试空间内操作，结束后 `complete_test_space`；令牌只放请求头，不写入仓库或日志。
