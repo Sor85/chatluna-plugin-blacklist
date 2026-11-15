@@ -1,6 +1,6 @@
 {
   "name": "chatluna-plugin-blacklist",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "为 ChatLuna 提供拉黑与解除拉黑工具：拉黑须填写理由，已拉黑用户无法对话或使用指令，可查看黑名单列表",
   "type": "module",
   "license": "MIT",
